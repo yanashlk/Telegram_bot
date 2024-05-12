@@ -19,6 +19,7 @@ bot_messages = {
         'instructions': "Жми /go якщо продовжуєш або /stop щоб завершити\n"
                         "Щоб отримати більш детальну інформацію натисніть /help"
     },
+
 }
 with open('questions.csv', 'r', encoding='utf-8') as csvfile:
     questions_reader = csv.reader(csvfile)
@@ -30,11 +31,12 @@ with open('questions.csv', 'r', encoding='utf-8') as csvfile:
 
 good = ["Молодець!", "Чудово!", "Так тримати!", "Ти супер мозок!"]
 randomGood = random.choices(good)
-random1 = randomGood[0] or randomGood[1] or randomGood[2] or randomGood[3]
+random1 = next((x for x in randomGood if x), None)
+
 
 bad = ["Відповідь не правильна!", "Будь уважніше!", "Спробуй ще!"]
 randomBad = random.choices(bad)
-random2 = randomBad[0] or randomBad[1] or randomBad[2]
+random2 =  next((x for x in randomBad if x), None)
 
 @bot.message_handler(commands=['help'])
 def handle_help(message):

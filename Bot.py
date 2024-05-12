@@ -7,7 +7,19 @@ import csv
 bot = telebot.TeleBot('6719567455:AAFnnVotReWuMb848dN7A-IlamMjQDU4Fas')
 
 start_time = None
-
+bot_messages = {
+    'help': {
+        'intro': '\nБот складається з 5 питань, кожне з них має 4 варіанти відповіді. '
+                 'Після проходження тесту ви дізнаєтесь результат: кількість відповідей та час проходження.',
+        'start_quiz': '\t\nРозпочати опитування: /go'
+    },
+    'start': {
+        'intro': "Ну що, готовий перевірити свої знання?\n"
+                 "Тема: Python!\n\n",
+        'instructions': "Жми /go якщо продовжуєш або /stop щоб завершити\n"
+                        "Щоб отримати більш детальну інформацію натисніть /help"
+    },
+}
 with open('questions.csv', 'r', encoding='utf-8') as csvfile:
     questions_reader = csv.reader(csvfile)
     questions = []
@@ -24,19 +36,17 @@ bad = ["Відповідь не правильна!", "Будь уважніше
 randomBad = random.choices(bad)
 random2 = randomBad[0] or randomBad[1] or randomBad[2]
 
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    bot.send_message(message.chat.id, "Ну що, готовий перевірити свої знання?\n"
-                                      "Тема: Python!\n\n"
-                                      "Жми /go якщо продовжуєш або /stop щоб завершити\n"
-                                      "Щоб отримати більш детальну інформацію натисніть /help")
-
-
 @bot.message_handler(commands=['help'])
 def handle_help(message):
-    bot.send_message(message.chat.id, '\nБот складається з 5 питань, кожне з них має 4 варіанти відповіді. '
-                                      'Після проходження тесту ви дізнаєтесь результат: кількість відповідей та час проходження.'
-                                      '\t\nРозпочати опитування: /go')
+    intro = bot_messages['help']['intro']
+    start_quiz = bot_messages['help']['start_quiz']
+    bot.send_message(message.chat.id, f"{intro}{start_quiz}")
+
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    intro = bot_messages['start']['intro']
+    instructions = bot_messages['start']['instructions']
+    bot.send_message(message.chat.id, f"{intro}{instructions}")
 
 @bot.message_handler(commands=['go'])
 def handle_go(message):

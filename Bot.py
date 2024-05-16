@@ -1,96 +1,103 @@
+import random
+import datetime
 import telebot
 from telebot import types
-import random
-import time
 import csv
 
-bot = telebot.TeleBot('6719567455:AAFnnVotReWuMb848dN7A-IlamMjQDU4Fas')
-
-start_time = None
-bot_messages = {
-    'help': {
-        'intro': '\nБот складається з 5 питань, кожне з них має 4 варіанти відповіді. '
-                 'Після проходження тесту ви дізнаєтесь результат: кількість відповідей та час проходження.',
-        'start_quiz': '\t\nРозпочати опитування: /go'
-    },
-    'start': {
-        'intro': "Ну що, готовий перевірити свої знання?\n"
-                 "Тема: Python!\n\n",
-        'instructions': "Жми /go якщо продовжуєш або /stop щоб завершити\n"
-                        "Щоб отримати більш детальну інформацію натисніть /help"
-    },
-
-}
-with open('questions.csv', 'r', encoding='utf-8') as csvfile:
-    questions_reader = csv.reader(csvfile)
-    questions = []
-    questions = [row for row in questions_reader]
-    #print(questions[1])
-    random.shuffle(questions)
-
-
-good = ["Молодець!", "Чудово!", "Так тримати!", "Ти супер мозок!"]
-randomGood = random.choices(good)
-random1 = next((x for x in randomGood if x), None)
-
-
-bad = ["Відповідь не правильна!", "Будь уважніше!", "Спробуй ще!"]
-randomBad = random.choices(bad)
-random2 =  next((x for x in randomBad if x), None)
-
-@bot.message_handler(commands=['help'])
-def handle_help(message):
-    intro = bot_messages['help']['intro']
-    start_quiz = bot_messages['help']['start_quiz']
-    bot.send_message(message.chat.id, f"{intro}{start_quiz}")
+bot = telebot.TeleBot('6668250527:AAFINq_6I0cTjxIfAW51J0NDCKP3fP8zZDA')
+quiz = None
 
 @bot.message_handler(commands=['start'])
-def handle_start(message):
-    intro = bot_messages['start']['intro']
-    instructions = bot_messages['start']['instructions']
-    bot.send_message(message.chat.id, f"{intro}{instructions}")
+def start_quiz(message):
+    global quiz
+    quiz = Quiz()
+    quiz.ask_question(message)
+    quiz.startTime = datetime.datetime.now()
 
-@bot.message_handler(commands=['go'])
-def handle_go(message):
-    points = 0
-    start_time = time.time()
-    current_question_index = 0
-    def send_question():
-        nonlocal current_question_index
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        current_question = questions[current_question_index]
+@bot.callback_query_handler(func=lambda callback: True)
+def handle_button_click(callback):
+    number_of_user_answer = int(callback.data.split('_')[1])
+    question_data = quiz.questions[quiz.current_question_number - 1]
+    answers = question_data['options']
+    user_answer = answers[number_of_user_answer - 1]
 
-        # Iterate over answer options and add them to the markup
-        for option in current_question[1:]:
-            markup.add(types.KeyboardButton(option))
-
-        bot.send_message(message.chat.id, current_question[0], reply_markup=markup)
-
-    send_question()
-
-    @bot.message_handler(func=lambda message: message.text in questions[current_question_index][1:])
-    def handle_answer(message):
-        nonlocal points, current_question_index
-
-        user_answer = message.text
-        correct_answer = questions[current_question_index][5]
-
-        if user_answer == correct_answer:
-            bot.send_message(message.chat.id, random1)
-            points += 1
+    correct_answer = quiz.know_correct_answer()
+    bot.delete_message(callback.message.chat.id, callback.message.message_id)
+    current_question = quiz.current_question_number
+    if(current_question != 10):
+        if correct_answer == user_answer:
+            is_answer_correct = "Вірна"
         else:
-            bot.send_message(message.chat.id, random2)
+            is_answer_correct = "Неправильна"
+        bot.send_message(callback.message.chat.id, f"Відповідь: '{is_answer_correct}'")
+    quiz.increment_number_of_correct_answers(correct_answer, user_answer)
+    quiz.ask_question(callback.message)
 
-        current_question_index += 1
-        if current_question_index < len(questions):
-            send_question()
+class Quiz:
+    def __init__(self):
+        self.questions = self.load_questions()
+        random.shuffle(self.questions)
+        self.number_of_correct_answers = 0
+        self.current_question_number = 0
+        self.test_duration = None
+        self.startTime = None
+
+    def load_questions(self):
+        questions = []
+        with open('questions.csv', mode='r', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                question = {
+                    'question': row['Question'],
+                    'options': [row['Option 1'], row['Option 2'], row['Option 3'], row['Option 4']],
+                    'correct_option': int(row['Correct Option'])
+                }
+                questions.append(question)
+        return questions
+
+    def ask_question(self, message):
+        if(self.current_question_number == 0):
+            self.number_of_correct_answers = 0
+
+        if (self.current_question_number < 10):
+            bot.delete_message(message.chat.id, message.message_id-1)
+            question_data = self.questions[self.current_question_number]
+            markup = types.InlineKeyboardMarkup()
+            question_text = question_data['question']
+            options = question_data['options']
+            for i, option in enumerate(options, start=1):
+                callback_data = f"answer_{i}"
+                button = types.InlineKeyboardButton(text=f"{i}. {option}", callback_data=callback_data)
+                markup.add(button)
+
+            bot.send_message(message.chat.id, f"{question_text}", reply_markup=markup)
+
+            self.current_question_number += 1
         else:
-            end_time = time.time()
-            time_taken = round(end_time - start_time, 2)
-            bot.send_message(message.chat.id, f'Ви успішно пройшли тест за {time_taken} секунд.')
-            bot.send_message(message.chat.id, f'Ви набрали {points} з {len(questions) - 1}.')  # Subtract 1 for the initial question
+            bot.delete_message(message.chat.id, message.message_id - 1)
+            end_time = datetime.datetime.now()
+            self.end_quiz(message, end_time)
 
-bot.polling()
+    def know_correct_answer(self):
+        question_data = self.questions[self.current_question_number - 1]
+        correct_option = question_data['correct_option']
+        answers = question_data['options']
+        correct_answer = answers[correct_option - 1]
+        return correct_answer
 
+    def increment_number_of_correct_answers(self, user_answer, correct_answer):
+        if(user_answer == correct_answer): self.number_of_correct_answers += 1
 
+    def end_quiz(self, message, end_time):
+        duration = end_time - self.startTime
+        duration_formatted = "{:0>2}:{:0>2}:{:0>2}".format(int(duration.seconds // 3600),
+                                                           int((duration.seconds // 60) % 60),
+                                                           int(duration.seconds % 60))
+        formatted_end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
+        bot.send_message(message.chat.id,
+                         f"Тест завершено!\nКількість правильних відповідей: {self.number_of_correct_answers}\n"
+                         f"Дата та час завершення: {formatted_end_time}\n"                                 
+                         f"Тривалість проходження тесту: {duration_formatted}\n")
+        bot.send_message(message.chat.id, "Для початку нового тесту введіть /start")
 
+bot.polling(none_stop=True)

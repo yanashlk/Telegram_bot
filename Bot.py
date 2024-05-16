@@ -1,8 +1,12 @@
+import logging
 import telebot
 from telebot import types
 import random
 import time
 import csv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 bot = telebot.TeleBot('6719567455:AAFnnVotReWuMb848dN7A-IlamMjQDU4Fas')
 
@@ -40,18 +44,21 @@ random2 =  next((x for x in randomBad if x), None)
 
 @bot.message_handler(commands=['help'])
 def handle_help(message):
+    logger.info("User requested help")
     intro = bot_messages['help']['intro']
     start_quiz = bot_messages['help']['start_quiz']
     bot.send_message(message.chat.id, f"{intro}{start_quiz}")
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    logger.info("User started the bot")
     intro = bot_messages['start']['intro']
     instructions = bot_messages['start']['instructions']
     bot.send_message(message.chat.id, f"{intro}{instructions}")
 
 @bot.message_handler(commands=['go'])
 def handle_go(message):
+    logger.info("User started the quiz")
     points = 0
     start_time = time.time()
     current_question_index = 0
@@ -89,6 +96,7 @@ def handle_go(message):
             time_taken = round(end_time - start_time, 2)
             bot.send_message(message.chat.id, f'Ви успішно пройшли тест за {time_taken} секунд.')
             bot.send_message(message.chat.id, f'Ви набрали {points} з {len(questions) - 1}.')  # Subtract 1 for the initial question
+            logger.info(f"Quiz completed in {time_taken} seconds with {points} points")
 
 bot.polling()
 

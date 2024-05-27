@@ -66,42 +66,47 @@ class QuizBot:
         self.quiz.startTime = datetime.datetime.now()
 
     def process_answer(self, callback):
-        number_of_user_answer = int(callback.data.split('_')[1])
-        question_data = self.quiz.questions[self.quiz.current_question_number - 1]
-        answers = question_data['options']
-        user_answer = answers[number_of_user_answer - 1]
+    number_of_user_answer = int(callback.data.split('_')[1])
+    current_question_index = self.quiz.current_question_number - 1
+    question_data = self.quiz.questions[current_question_index]
+    user_answer = question_data['options'][number_of_user_answer - 1]
 
-        correct_answer = self.quiz.know_correct_answer()
-        logger.info(f"User answer: {user_answer}, Correct answer: {correct_answer}")
+    correct_answer = self.quiz.know_correct_answer()
+    logger.info(f"User answer: {user_answer}, Correct answer: {correct_answer}")
 
-        current_question = self.quiz.current_question_number
+    is_answer_correct = self.check_answer(user_answer, correct_answer)
+    self.bot.send_message(callback.message.chat.id, f"Відповідь: '{is_answer_correct}'")
 
-        if current_question <= QUIZ_LENGTH:
-            if correct_answer == user_answer:
-                is_answer_correct = "Правильна"
-                self.quiz.increment_number_of_correct_answers(user_answer, correct_answer)
-            else:
-                is_answer_correct = "Неправильна"
-            self.bot.send_message(callback.message.chat.id, f"Відповідь: '{is_answer_correct}'")
-            if current_question < QUIZ_LENGTH:
-                self.quiz.ask_question(self.bot, callback.message)
-            else:
-                end_time = datetime.datetime.now()
-                self.quiz.end_quiz(self.bot, callback.message, end_time)
+    if self.quiz.current_question_number < QUIZ_LENGTH:
+        self.quiz.ask_question(self.bot, callback.message)
+    else:
+        end_time = datetime.datetime.now()
+        self.quiz.end_quiz(self.bot, callback.message, end_time)
+
+    def check_answer(self, user_answer, correct_answer):
+        if user_answer == correct_answer:
+            self.quiz.increment_number_of_correct_answers(user_answer, correct_answer)
+            return "Правильна"
+        else:
+            return "Неправильна"
 
 
 class Quiz:
     def __init__(self):
-        self.questions = self.load_questions()
-        random.shuffle(self.questions)
+        self.questions = self.load_and_shuffle_questions()
         self.number_of_correct_answers = 0
         self.current_question_number = 0
-        self.startTime = None
+        self.start_time = None
 
-    def load_questions(self):
+    def load_and_shuffle_questions(self):
+        questions = self.load_questions_from_file(QUESTIONS_FILE)
+        random.shuffle(questions)
+        return questions
+
+    def load_questions_from_file(self, file_path):
         questions = []
         try:
-            with open(QUESTIONS_FILE, mode='r', encoding='utf-8') as file:
+            with open(file_path, mode='r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     question = {
@@ -111,52 +116,58 @@ class Quiz:
                     }
                     questions.append(question)
         except FileNotFoundError:
-            logger.error(f"Файл {QUESTIONS_FILE} не знайдено.")
+            logger.error(f"Файл {file_path} не знайдено.")
         except Exception as e:
             logger.error(f"Помилка при завантаженні питань: {e}")
         return questions
 
     def ask_question(self, bot, message):
-        if self.current_question_number == 0:
-            self.number_of_correct_answers = 0
-
         if self.current_question_number < QUIZ_LENGTH:
-            question_data = self.questions[self.current_question_number]
-            markup = types.InlineKeyboardMarkup()  # виправлено тут
-            question_text = question_data['question']
-            options = question_data['options']
-            for i, option in enumerate(options, start=1):
-                callback_data = f"answer_{i}"
-                button = types.InlineKeyboardButton(text=f"{i}. {option}", callback_data=callback_data)
-                markup.add(button)
-
-            bot.send_message(message.chat.id, f"{question_text}", reply_markup=markup)
+            self.send_question(bot, message)
             self.current_question_number += 1
         else:
-            end_time = datetime.datetime.now()
-            self.end_quiz(bot, message, end_time)
+            self.end_quiz(bot, message)
+
+    def send_question(self, bot, message):
+        question_data = self.questions[self.current_question_number]
+        markup = self.create_question_markup(question_data['options'])
+        question_text = question_data['question']
+        bot.send_message(message.chat.id, question_text, reply_markup=markup)
+
+    def create_question_markup(self, options):
+        markup = types.InlineKeyboardMarkup()
+        for i, option in enumerate(options, start=1):
+            callback_data = f"answer_{i}"
+            button = types.InlineKeyboardButton(text=f"{i}. {option}", callback_data=callback_data)
+            markup.add(button)
+        return markup
 
     def know_correct_answer(self):
-        question_data = self.questions[self.current_question_number - 1]
-        correct_option = question_data['correct_option']
-        answers = question_data['options']
-        correct_answer = answers[correct_option - 1]
-        return correct_answer
+        correct_option_index = self.questions[self.current_question_number - 1]['correct_option'] - 1
+        return self.questions[self.current_question_number - 1]['options'][correct_option_index]
 
     def increment_number_of_correct_answers(self, user_answer, correct_answer):
         if user_answer == correct_answer:
             self.number_of_correct_answers += 1
 
-    def end_quiz(self, bot, message, end_time):
-        duration = end_time - self.startTime
-        duration_formatted = "{:0>2}:{:0>2}:{:0>2}".format(int(duration.seconds // 3600),
-                                                           int((duration.seconds // 60) % 60),
-                                                           int(duration.seconds % 60))
+    def end_quiz(self, bot, message):
+        end_time = datetime.datetime.now()
+        duration = end_time - self.start_time
+        duration_formatted = self.format_duration(duration)
         formatted_end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
-        bot.send_message(message.chat.id,
-                         f"Тест завершено!\nКількість правильних відповідей: {self.number_of_correct_answers}\n"
-                         f"Дата та час завершення: {formatted_end_time}\n"
-                         f"Тривалість проходження тесту: {duration_formatted}\n")
+        self.send_quiz_summary(bot, message, duration_formatted, formatted_end_time)
+
+    def format_duration(self, duration):
+        hours, remainder = divmod(duration.seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+    def send_quiz_summary(self, bot, message, duration_formatted, formatted_end_time):
+        summary = (f"Тест завершено!\n"
+                   f"Кількість правильних відповідей: {self.number_of_correct_answers}\n"
+                   f"Дата та час завершення: {formatted_end_time}\n"
+                   f"Тривалість проходження тесту: {duration_formatted}\n")
+        bot.send_message(message.chat.id, summary)
         bot.send_message(message.chat.id, "Для початку нового тесту введіть /start")
 
 

@@ -4,7 +4,7 @@ import datetime
 import telebot
 from telebot import types
 import csv
-
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,14 +56,18 @@ class QuizBot:
         self.bot.send_message(message.chat.id, f"{intro}{start_quiz}")
 
     def start_new_quiz(self, message):
-        logger.info("User started the bot")
+        logger.info("Starting new quiz")
         intro = bot_messages['start']['intro']
         instructions = bot_messages['start']['instructions']
         self.bot.send_message(message.chat.id, f"{intro}{instructions}")
 
         self.quiz = Quiz()
+        if not self.quiz.load_questions():
+            logger.error("Failed to load questions for the quiz")
+            self.bot.send_message(message.chat.id, "Не вдалося завантажити питання для тесту. Спробуйте пізніше.")
+            return
         self.quiz.ask_question(self.bot, message)
-        self.quiz.startTime = datetime.datetime.now()
+        self.quiz.start_time = datetime.datetime.now()
 
     def process_answer(self, callback):
     number_of_user_answer = int(callback.data.split('_')[1])

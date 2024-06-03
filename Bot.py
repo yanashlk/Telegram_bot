@@ -29,6 +29,7 @@ bot_messages = {
     },
 }
 
+
 class QuizBot:
     def __init__(self, bot):
         self.bot = bot
@@ -37,14 +38,17 @@ class QuizBot:
     def start(self):
         @self.bot.message_handler(commands=['help'])
         def handle_help(message):
+            logger.info("User requested help")
             self.send_help_message(message)
 
         @self.bot.message_handler(commands=['start'])
         def start_quiz(message):
+            logger.info("User started the bot")
             self.start_new_quiz(message)
 
         @self.bot.callback_query_handler(func=lambda callback: True)
         def handle_button_click(callback):
+            logger.info("Handling button click")
             self.process_answer(callback)
 
         self.bot.polling(none_stop=True)
@@ -70,24 +74,30 @@ class QuizBot:
         self.quiz.start_time = datetime.datetime.now()
 
     def process_answer(self, callback):
-    number_of_user_answer = int(callback.data.split('_')[1])
-    current_question_index = self.quiz.current_question_number - 1
-    question_data = self.quiz.questions[current_question_index]
-    user_answer = question_data['options'][number_of_user_answer - 1]
+        logger.info("Processing user answer")
+        if not self.quiz:
+            logger.error("Quiz is not initialized.")
+            return
 
-    correct_answer = self.quiz.know_correct_answer()
-    logger.info(f"User answer: {user_answer}, Correct answer: {correct_answer}")
+        number_of_user_answer = int(callback.data.split('_')[1])
+        current_question_index = self.quiz.current_question_number - 1
+        question_data = self.quiz.questions[current_question_index]
+        user_answer = question_data['options'][number_of_user_answer - 1]
 
-    is_answer_correct = self.check_answer(user_answer, correct_answer)
-    self.bot.send_message(callback.message.chat.id, f"Відповідь: '{is_answer_correct}'")
+        correct_answer = self.quiz.know_correct_answer()
+        logger.info(f"User answer: {user_answer}, Correct answer: {correct_answer}")
 
-    if self.quiz.current_question_number < QUIZ_LENGTH:
-        self.quiz.ask_question(self.bot, callback.message)
-    else:
-        end_time = datetime.datetime.now()
-        self.quiz.end_quiz(self.bot, callback.message, end_time)
+        is_answer_correct = self.check_answer(user_answer, correct_answer)
+        self.bot.send_message(callback.message.chat.id, f"Відповідь: '{is_answer_correct}'")
+
+        if self.quiz.current_question_number < QUIZ_LENGTH:
+            self.quiz.ask_question(self.bot, callback.message)
+        else:
+            end_time = datetime.datetime.now()
+            self.quiz.end_quiz(self.bot, callback.message, end_time)
 
     def check_answer(self, user_answer, correct_answer):
+        logger.info("Checking user answer")
         if user_answer == correct_answer:
             self.quiz.increment_number_of_correct_answers(user_answer, correct_answer)
             return "Правильна"
@@ -107,10 +117,14 @@ class Quiz:
         random.shuffle(questions)
         return questions
 
-    def load_questions_from_file(self, file_path):
-        questions = []
+    def load_questions(self):
+        logger.info("Loading questions")
+        if not os.path.exists(QUESTIONS_FILE):
+            logger.error(f"Файл {QUESTIONS_FILE} не знайдено.")
+            return False
+
         try:
-            with open(file_path, mode='r', encoding='utf-8') as file:
+            with open(QUESTIONS_FILE, mode='r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     question = {
@@ -118,14 +132,16 @@ class Quiz:
                         'options': [row['Option 1'], row['Option 2'], row['Option 3'], row['Option 4']],
                         'correct_option': int(row['Correct Option'])
                     }
-                    questions.append(question)
-        except FileNotFoundError:
-            logger.error(f"Файл {file_path} не знайдено.")
+                    self.questions.append(question)
         except Exception as e:
             logger.error(f"Помилка при завантаженні питань: {e}")
-        return questions
+            return False
+
+        random.shuffle(self.questions)
+        return True
 
     def ask_question(self, bot, message):
+        logger.info("Asking a question")
         if self.current_question_number < QUIZ_LENGTH:
             self.send_question(bot, message)
             self.current_question_number += 1
@@ -133,12 +149,14 @@ class Quiz:
             self.end_quiz(bot, message)
 
     def send_question(self, bot, message):
+        logger.info("Sending question")
         question_data = self.questions[self.current_question_number]
         markup = self.create_question_markup(question_data['options'])
         question_text = question_data['question']
         bot.send_message(message.chat.id, question_text, reply_markup=markup)
 
     def create_question_markup(self, options):
+        logger.info("Creating question markup")
         markup = types.InlineKeyboardMarkup()
         for i, option in enumerate(options, start=1):
             callback_data = f"answer_{i}"
@@ -147,26 +165,31 @@ class Quiz:
         return markup
 
     def know_correct_answer(self):
+        logger.info("Knowing correct answer")
         correct_option_index = self.questions[self.current_question_number - 1]['correct_option'] - 1
         return self.questions[self.current_question_number - 1]['options'][correct_option_index]
 
     def increment_number_of_correct_answers(self, user_answer, correct_answer):
+        logger.info("Incrementing correct answers count")
         if user_answer == correct_answer:
             self.number_of_correct_answers += 1
 
-    def end_quiz(self, bot, message):
-        end_time = datetime.datetime.now()
+    def end_quiz(self, bot, message, end_time=None):
+        logger.info("Ending quiz")
+        if end_time is None:
+            end_time = datetime.datetime.now()
         duration = end_time - self.start_time
         duration_formatted = self.format_duration(duration)
         formatted_end_time = end_time.strftime("%Y-%m-%d %H:%M:%S")
         self.send_quiz_summary(bot, message, duration_formatted, formatted_end_time)
 
     def format_duration(self, duration):
+        logger.info("Formatting duration")
         hours, remainder = divmod(duration.seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{hours:02}:{minutes:02}:{seconds:02}"
-
     def send_quiz_summary(self, bot, message, duration_formatted, formatted_end_time):
+        logger.info("Sending quiz summary")
         summary = (f"Тест завершено!\n"
                    f"Кількість правильних відповідей: {self.number_of_correct_answers}\n"
                    f"Дата та час завершення: {formatted_end_time}\n"

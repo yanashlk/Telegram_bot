@@ -5,12 +5,13 @@ import telebot
 from telebot import types
 import csv
 import os
+from quiz.QuizBot import QuizBot
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = '6668250527:AAFINq_6I0cTjxIfAW51J0NDCKP3fP8zZDA'
-QUIZ_LENGTH = 10
 QUESTIONS_FILE = 'questions.csv'
 
 bot = telebot.TeleBot(BOT_TOKEN)
